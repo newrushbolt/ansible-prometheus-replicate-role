@@ -1,0 +1,9 @@
+---
+
+- hosts:
+    - prometheus-replica
+    - prometheus
+  gather_facts: true
+  become: true
+  roles:
+    - ansible-prometheus-replicate-role
