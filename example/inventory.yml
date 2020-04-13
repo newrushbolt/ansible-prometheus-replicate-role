@@ -1,0 +1,10 @@
+---
+
+all:
+  children:
+    prometheus:
+      hosts:
+        prometheus01:
+    prometheus-replica:
+      hosts:
+        prometheus02:

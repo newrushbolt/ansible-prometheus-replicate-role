@@ -1,0 +1,8 @@
+---
+
+prometheus_replication_private_key_path: /tmp/tmp_prometheus_id_rsa
+prometheus_replication_data_path: /var/lib/prometheus/data
+prometheus_replication_master_host: >-
+  {{
+    groups['prometheus'] | select("in", play_hosts) | list | first
+  }}

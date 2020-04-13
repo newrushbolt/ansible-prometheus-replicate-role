@@ -1,0 +1,74 @@
+---
+
+- name: Generate SSH key
+  openssh_keypair:
+    path: "{{ prometheus_replication_private_key_path }}"
+    force: true
+  register: prometheus_ssh_key
+  when:
+    - "inventory_hostname in groups['prometheus']"
+
+- name: Copy public SSH key to replica
+  blockinfile:
+    block: "{{ hostvars[prometheus_replication_master_host]['prometheus_ssh_key']['public_key'] }}"
+    path: /root/.ssh/authorized_keys
+    marker: "# {mark} ANSIBLE SSH-KEY FOR PROMETHEUS REPLICATION"
+  when:
+    - "inventory_hostname in groups['prometheus-replica']"
+
+- name: Make a snapshot
+  uri:
+    url: http://{{ inventory_hostname}}:9090/api/v1/admin/tsdb/snapshot
+    method: POST
+    timeout: 300
+  register: prometheus_snapshot_response
+  when:
+    - "inventory_hostname in groups['prometheus']"
+
+- name: Validate snapshot
+  assert:
+    that:
+      - "'status' in prometheus_snapshot_response.json"
+      - "prometheus_snapshot_response.json.status == 'success'"
+  when:
+    - "inventory_hostname in groups['prometheus']"
+
+- name: Create data directory on replica
+  file:
+    path: "{{ prometheus_replication_data_path }}"
+    state: directory
+  when:
+    - "inventory_hostname in groups['prometheus-replica']"
+
+- name: Copy snapshot
+  synchronize:
+    src: "{{ prometheus_replication_data_path }}/snapshots/{{ hostvars[prometheus_replication_master_host].prometheus_snapshot_response.json.data.name }}/"
+    dest: "{{ prometheus_replication_data_path }}/"
+    compress: false
+    private_key: "{{ prometheus_replication_private_key_path }}"
+  when:
+    - "inventory_hostname in groups['prometheus-replica']"
+  delegate_to: "{{ prometheus_replication_master_host }}"
+
+- name: Remove public key from replica
+  blockinfile:
+    block: "{{ hostvars[prometheus_replication_master_host]['prometheus_ssh_key']['public_key'] }}"
+    path: /root/.ssh/authorized_keys
+    marker: "# {mark} ANSIBLE MANAGED BLOCK FOR PROMETHEUS REPLICATION"
+    state: absent
+  when:
+    - "inventory_hostname in groups['prometheus-replica']"
+
+- name: Remove SSH key
+  file:
+    path: "{{ prometheus_replication_private_key_path }}"
+    state: absent
+  when:
+    - "inventory_hostname in groups['prometheus']"
+
+- name: Remove snapshot
+  file:
+    path: "{{ prometheus_replication_data_path }}/snapshots/{{ prometheus_snapshot_response.json.data.name }}"
+    state: absent
+  when:
+    - "inventory_hostname in groups['prometheus']"
